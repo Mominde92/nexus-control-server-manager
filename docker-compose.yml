@@ -1,0 +1,198 @@
+# =============================================================================
+# Server Manager — full stack
+#
+#   web (nginx)  ->  api (php-fpm)  ->  mysql
+#                    queue  (worker)
+#                    scheduler (cron)
+#                    redis  (cache/queue in production)
+#   ui  (nginx serving the built SPA)
+#
+# Quick start:
+#   cp server-manager-api/.env.example server-manager-api/.env
+#   docker compose up -d --build
+#   docker compose exec api php artisan key:generate
+#   docker compose exec api php artisan db:seed --force
+#
+# API -> http://localhost:8000     UI -> http://localhost:5173
+# =============================================================================
+
+name: server-manager
+
+x-api-env: &api-env
+  APP_ENV: ${APP_ENV:-production}
+  APP_DEBUG: ${APP_DEBUG:-false}
+  APP_KEY: ${APP_KEY:-}
+  APP_URL: ${APP_URL:-http://localhost:8000}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+  SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost:5173,localhost:8000}
+  SESSION_DOMAIN: ${SESSION_DOMAIN:-localhost}
+  SESSION_DRIVER: database
+  DB_CONNECTION: mysql
+  DB_HOST: mysql
+  DB_PORT: '3306'
+  DB_DATABASE: ${DB_DATABASE:-server_manager}
+  DB_USERNAME: ${DB_USERNAME:-server_manager}
+  DB_PASSWORD: ${DB_PASSWORD:-secret}
+  REDIS_HOST: redis
+  REDIS_PORT: '6379'
+  CACHE_STORE: ${CACHE_STORE:-database}
+  QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+  MAIL_MAILER: ${MAIL_MAILER:-log}
+
+# Shared build definition so api/queue/scheduler run the identical image.
+x-api-build: &api-build
+  build:
+    context: ./server-manager-api
+    dockerfile: Dockerfile
+    target: runtime
+  image: server-manager/api:latest
+  restart: unless-stopped
+  volumes:
+    - api-storage:/var/www/html/storage
+  networks: [backend]
+
+services:
+  # ---------------------------------------------------------------------------
+  # Database
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=caching_sha2_password
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-server_manager}
+      MYSQL_USER: ${DB_USERNAME:-server_manager}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root-secret}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # Nightly dumps written by `php artisan db:backup` land here too.
+      - ./backups:/backups
+    healthcheck:
+      # Gate dependents on a real readiness signal, not just "container up".
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-p${DB_ROOT_PASSWORD:-root-secret}']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [backend]
+
+  # ---------------------------------------------------------------------------
+  # API (php-fpm) — owns migrations
+  # ---------------------------------------------------------------------------
+  api:
+    <<: *api-build
+    environment:
+      <<: *api-env
+      CONTAINER_ROLE: app
+      RUN_MIGRATIONS: 'true'
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Public entrypoint for the API
+  # ---------------------------------------------------------------------------
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '${API_PORT:-8000}:80'
+    volumes:
+      - ./server-manager-api/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # nginx must see /public to serve static files and resolve try_files.
+      - ./server-manager-api/public:/var/www/html/public:ro
+    depends_on:
+      api:
+        condition: service_started
+    networks: [backend]
+
+  # ---------------------------------------------------------------------------
+  # Queue worker — sends password-reset mail and expiry digests
+  # ---------------------------------------------------------------------------
+  queue:
+    <<: *api-build
+    environment:
+      <<: *api-env
+      CONTAINER_ROLE: queue
+      RUN_MIGRATIONS: 'false'
+    command:
+      - php
+      - artisan
+      - queue:work
+      - --tries=3
+      - --backoff=5
+      - --max-time=3600
+      - --sleep=1
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ['CMD', 'php', 'artisan', 'queue:monitor', 'default']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Scheduler — drives expiry:notify, activity:prune, db:backup
+  # ---------------------------------------------------------------------------
+  scheduler:
+    <<: *api-build
+    environment:
+      <<: *api-env
+      CONTAINER_ROLE: scheduler
+      RUN_MIGRATIONS: 'false'
+    # schedule:work is the container-native replacement for a crontab entry.
+    command: ['php', 'artisan', 'schedule:work']
+    depends_on:
+      api:
+        condition: service_started
+
+  # ---------------------------------------------------------------------------
+  # React SPA
+  # ---------------------------------------------------------------------------
+  ui:
+    build:
+      context: ./server-manager-ui
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        # Baked in at build time by Vite.
+        VITE_API_URL: ${APP_URL:-http://localhost:8000}
+        VITE_APP_NAME: ${APP_NAME:-Server Manager}
+    image: server-manager/ui:latest
+    restart: unless-stopped
+    ports:
+      - '${UI_PORT:-5173}:80'
+    depends_on:
+      web:
+        condition: service_started
+    networks: [backend]
+
+volumes:
+  mysql-data:
+  redis-data:
+  api-storage:
+
+networks:
+  backend:
+    driver: bridge

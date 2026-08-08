@@ -1,0 +1,50 @@
+# Build context exclusions.
+#
+# Keeping vendor/ out is important: it is installed inside the image for the
+# correct platform, and copying a host-built vendor/ would ship Windows paths
+# and possibly mismatched native extensions.
+
+.git
+.gitignore
+.gitattributes
+.editorconfig
+
+# Secrets — the container receives configuration via environment variables.
+.env
+.env.*
+!.env.example
+
+vendor/
+node_modules/
+
+# Runtime state; recreated by the entrypoint and mounted as a volume.
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/backups/*
+bootstrap/cache/*
+
+# Never ship a local SQLite database.
+database/*.sqlite
+database/*.sqlite-journal
+
+# Dev-only tooling and output.
+tests/
+phpunit.xml
+.phpunit.result.cache
+.phpunit.cache/
+.pint.cache
+docker-compose*.yml
+Dockerfile
+.dockerignore
+README.md
+docs/
+
+# Editor / OS noise.
+.idea/
+.vscode/
+.fleet/
+*.log
+Thumbs.db
+Desktop.ini

@@ -1,9 +1,13 @@
 import { motion } from 'framer-motion'
 import { Activity, ArrowUpRight, CheckCircle2, Clock3, Globe2, Plus, Server, ShieldCheck, Sparkles } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useDashboardStats, useExpiringDomains, useExpiringHostings, useRecentActivities } from '@/hooks/use-dashboard'
+import { useMonitoringSummary, useServersNeedingAttention } from '@/hooks/use-monitoring'
+import { HealthBadge } from '@/components/monitoring/health-badge'
+import { ServerHealthSummary } from '@/components/monitoring/server-health-summary'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { formatNumber, formatRelative } from '@/lib/format'
 import type { ExpiringItem } from '@/types/models'
 
 export function DashboardPage(){
@@ -12,6 +16,23 @@ export function DashboardPage(){
   return <div className="mx-auto max-w-[1600px] space-y-7"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-indigo-600"><Sparkles className="size-3.5"/>LIVE INFRASTRUCTURE OVERVIEW</div><h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Good afternoon, Admin</h1><p className="mt-1.5 text-sm text-slate-500">Here’s what’s happening across your infrastructure today.</p></div><div className="flex gap-2"><Button variant="outline" className="rounded-xl" onClick={()=>navigate('/domains')}>View domains</Button><Button className="rounded-xl bg-indigo-600 shadow-lg shadow-indigo-600/15 hover:bg-indigo-700" onClick={()=>navigate('/hostings')}><Plus/>Add hosting</Button></div></div>
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">{cards.map(([label,value,description,Icon,color],index)=><motion.div key={label} initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{delay:index*.04}} whileHover={{y:-3}}><Card className="h-full border-slate-200/80 shadow-sm transition-shadow hover:shadow-md dark:border-slate-800"><CardContent className="p-5"><div className="flex items-start justify-between"><div className={`grid size-10 place-items-center rounded-xl ${color}`}><Icon className="size-5"/></div><ArrowUpRight className="size-4 text-slate-300"/></div><p className="mt-5 text-3xl font-bold tracking-tight tabular-nums">{stats.isLoading?'—':value??0}</p><p className="mt-1 text-sm font-semibold">{label}</p><p className="mt-1 text-[11px] text-slate-400">{description}</p></CardContent></Card></motion.div>)}</div>
     <div className="grid gap-5 xl:grid-cols-[1fr_1fr_.9fr]"><Expiry title="Expiring hostings" rows={hostings.data} empty="No hostings expiring in 30 days" icon={Server}/><Expiry title="Expiring domains" rows={domains.data} empty="No domains expiring in 30 days" icon={Globe2}/><Card className="border-slate-200/80 shadow-sm dark:border-slate-800"><CardHeader className="border-b border-slate-100 pb-4 dark:border-slate-800"><div className="flex items-center justify-between"><div><CardTitle className="text-base">Recent activity</CardTitle><p className="mt-1 text-xs text-slate-400">Latest actions across your team</p></div><div className="grid size-9 place-items-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10"><Activity className="size-4"/></div></div></CardHeader><CardContent className="pt-5">{activities.data?.length?<div className="space-y-0">{activities.data.map(item=><div key={item.id} className="relative flex gap-3 pb-5 last:pb-0"><div className="relative z-10 mt-1.5 size-2.5 shrink-0 rounded-full border-2 border-white bg-indigo-500 ring-2 ring-indigo-100 dark:border-slate-900 dark:ring-indigo-500/20"/><div className="absolute top-4 bottom-0 left-[4px] w-px bg-slate-100 last:hidden dark:bg-slate-800"/><div><p className="text-xs leading-5 font-medium">{item.summary??item.description??item.action?.label??'Activity recorded'}</p><p className="mt-1 text-[11px] text-slate-400">{item.user?.name??'System'} · {item.created_at?new Date(item.created_at).toLocaleString():''}</p></div></div>)}</div>:<Empty text="No activity recorded yet"/>}</CardContent></Card></div>
+    <InfrastructureHealth/>
+  </div>
+}
+
+/**
+ * Monitoring, appended to the existing dashboard.
+ *
+ * Renders nothing at all if the monitoring endpoints are unavailable, so this
+ * section can never break the dashboard for an installation without them.
+ */
+function InfrastructureHealth(){
+  const summary=useMonitoringSummary();const attention=useServersNeedingAttention()
+  if(summary.error||(!summary.isLoading&&!summary.data))return null
+  const rows=attention.data??[]
+  return <div className="space-y-4"><div className="flex items-center gap-2"><Activity className="size-4 text-indigo-600"/><h2 className="text-sm font-semibold tracking-wide uppercase">Infrastructure health</h2><Link to="/monitoring" className="ml-auto text-xs font-medium text-indigo-600 hover:underline">Open monitoring</Link></div>
+    <ServerHealthSummary compact summary={summary.data} isLoading={summary.isLoading}/>
+    {attention.error?null:<Card className="border-slate-200/80 shadow-sm dark:border-slate-800"><CardHeader className="border-b border-slate-100 pb-4 dark:border-slate-800"><div className="flex items-center justify-between"><div><CardTitle className="text-base">Servers needing attention</CardTitle><p className="mt-1 text-xs text-slate-400">Worst first, ranked by the API</p></div><div className="grid size-9 place-items-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-500/10"><Server className="size-4"/></div></div></CardHeader><CardContent className="pt-5">{rows.length?<div className="space-y-2">{rows.slice(0,5).map(row=><Link key={row.id} to={`/servers/${row.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"><div className="min-w-0"><p className="truncate text-sm font-semibold">{row.name}</p><p className="mt-0.5 truncate text-xs text-slate-400">heartbeat {formatRelative(row.last_heartbeat_at)}{row.open_alert_count?` · ${formatNumber(row.open_alert_count)} open alerts`:''}</p></div><HealthBadge health={row.health}/></Link>)}</div>:<Empty text="Every monitored server is healthy"/>}</CardContent></Card>}
   </div>
 }
 

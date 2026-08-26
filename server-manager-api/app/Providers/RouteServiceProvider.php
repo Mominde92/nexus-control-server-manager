@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Http\Middleware\AuthenticateServerAgent;
+use App\Models\Server;
 use App\Support\ApiResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -59,6 +61,25 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('credentials', function (Request $request) {
             return Limit::perMinute(20)
                 ->by($this->requestKey($request));
+        });
+
+        // Agent ingest: keyed on the SERVER the credential resolved to, not on the
+        // IP or the user. That distinction matters — many agents can share one
+        // NAT address, so an IP-keyed bucket would let one busy site throttle its
+        // neighbours, while a server-keyed bucket caps each host independently and
+        // scales automatically as servers are added.
+        RateLimiter::for('agent-ingest', function (Request $request) {
+            $server = $request->attributes->get(AuthenticateServerAgent::SERVER_ATTRIBUTE);
+
+            $key = $server instanceof Server
+                ? 'server:'.$server->getKey()
+                // Unauthenticated requests never reach ingest (the middleware
+                // rejects them first); this is only a defensive fallback.
+                : 'ip:'.($request->ip() ?? 'unknown');
+
+            return Limit::perMinute((int) config('monitoring.agent.ingest_rate_limit', 120))
+                ->by('agent-ingest:'.$key)
+                ->response($this->tooManyAttempts());
         });
     }
 

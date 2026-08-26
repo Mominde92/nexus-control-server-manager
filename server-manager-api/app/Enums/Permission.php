@@ -48,6 +48,23 @@ enum Permission: string
     case DeleteProject = 'project.delete';
     case ExportProject = 'project.export';
 
+    // Server monitoring
+    case ViewServer = 'server.view';
+    case CreateServer = 'server.create';
+    case UpdateServer = 'server.update';
+    case DeleteServer = 'server.delete';
+    case ExportServer = 'server.export';
+
+    /**
+     * Issue, rotate and revoke agent credentials. Deliberately separate from
+     * `server.update`: an agent token is a bearer secret that grants ingest
+     * access to a host, so minting one is a security event, not an edit.
+     */
+    case ManageServerAgent = 'server.agent.manage';
+
+    case ViewServerMetric = 'server.metric.view';
+    case ManageServerAlert = 'server.alert.manage';
+
     // Users & access control
     case ViewUser = 'user.view';
     case CreateUser = 'user.create';

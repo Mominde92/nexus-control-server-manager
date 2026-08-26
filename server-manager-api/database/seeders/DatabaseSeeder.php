@@ -40,5 +40,12 @@ final class DatabaseSeeder extends Seeder
 
         $admin->syncRoles([UserRole::Admin->value]);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        // Demo inventory is for local/staging only — never ship fictional
+        // hostings and domains into a production estate.
+        if (! app()->isProduction()) {
+            $this->call(InfrastructureSeeder::class);
+            $this->call(MonitoringSeeder::class);
+        }
     }
 }

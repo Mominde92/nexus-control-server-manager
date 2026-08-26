@@ -1,0 +1,100 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/var/www/nexus-control' }}
+  PHP_BIN: ${{ vars.PHP_BIN || 'php' }}
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy
+    runs-on: self-hosted
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Verify server tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PHP_BIN" -r 'exit(version_compare(PHP_VERSION, "8.3.0", ">=") ? 0 : 1);'
+          composer --version
+          node --version
+          npm --version
+          rsync --version | head -n 1
+
+      - name: Install API production dependencies
+        working-directory: server-manager-api
+        shell: bash
+        run: composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+
+      - name: Build UI
+        working-directory: server-manager-ui
+        shell: bash
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy production
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$(id -u)" -eq 0 ]; then
+            SUDO=""
+            RUN_AS_WWW_DATA="runuser -u www-data --"
+          else
+            SUDO="sudo"
+            RUN_AS_WWW_DATA="sudo -u www-data"
+          fi
+
+          API_PATH="$DEPLOY_PATH/api"
+          UI_PATH="$DEPLOY_PATH/ui-dist"
+
+          $SUDO mkdir -p "$API_PATH" "$UI_PATH"
+
+          if [ ! -f "$API_PATH/.env" ]; then
+            echo "Missing production environment file: $API_PATH/.env"
+            echo "The pipeline will never create or overwrite production secrets."
+            exit 1
+          fi
+
+          $SUDO rsync -a --delete \
+            --exclude='.env' \
+            --exclude='storage' \
+            server-manager-api/ "$API_PATH/"
+          $SUDO rsync -a --delete server-manager-ui/dist/ "$UI_PATH/"
+
+          $SUDO chown root:www-data "$API_PATH/.env"
+          $SUDO chmod 640 "$API_PATH/.env"
+          $SUDO chown -R www-data:www-data "$API_PATH/storage" "$API_PATH/bootstrap/cache"
+          $SUDO chmod -R ug+rwX "$API_PATH/storage" "$API_PATH/bootstrap/cache"
+
+          cd "$API_PATH"
+          $RUN_AS_WWW_DATA "$PHP_BIN" artisan migrate --force --no-interaction
+          $RUN_AS_WWW_DATA "$PHP_BIN" artisan optimize:clear
+          $RUN_AS_WWW_DATA "$PHP_BIN" artisan config:cache
+          $RUN_AS_WWW_DATA "$PHP_BIN" artisan route:cache
+          $RUN_AS_WWW_DATA "$PHP_BIN" artisan event:cache
+          $RUN_AS_WWW_DATA "$PHP_BIN" artisan storage:link --force
+
+          if systemctl list-unit-files nexus-control-queue.service >/dev/null 2>&1; then
+            $SUDO systemctl restart nexus-control-queue.service
+          fi
+
+          $SUDO systemctl reload nginx
+          echo "Deployed release: $GITHUB_SHA"

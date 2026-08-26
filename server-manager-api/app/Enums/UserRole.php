@@ -94,6 +94,17 @@ enum UserRole: string
                 Permission::DeleteProject->value,
                 Permission::ExportProject->value,
 
+                // Full operational control of monitored servers, including
+                // alert triage — but NOT agent credential management, which
+                // mints bearer secrets and stays Admin-only.
+                Permission::ViewServer->value,
+                Permission::CreateServer->value,
+                Permission::UpdateServer->value,
+                Permission::DeleteServer->value,
+                Permission::ExportServer->value,
+                Permission::ViewServerMetric->value,
+                Permission::ManageServerAlert->value,
+
                 Permission::ViewUser->value,
                 Permission::ViewActivityLog->value,
                 Permission::ViewCredential->value,
@@ -116,6 +127,11 @@ enum UserRole: string
                 Permission::ViewProject->value,
                 Permission::CreateProject->value,
                 Permission::ViewDashboard->value,
+
+                // Read-only monitoring: an Employee may watch the estate but
+                // may not create, retune, delete or triage a server.
+                Permission::ViewServer->value,
+                Permission::ViewServerMetric->value,
             ],
         };
     }

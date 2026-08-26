@@ -11,6 +11,11 @@ import { ResourceAccessPage } from '@/pages/resource-access-page'
 import { RolesPage } from '@/pages/roles-page'
 import { UserFormPage } from '@/pages/user-form-page'
 import { RoleRecordPage } from '@/pages/role-record-page'
+import { MonitoringDashboardPage } from '@/pages/monitoring/monitoring-dashboard-page'
+import { ServerListPage } from '@/pages/monitoring/server-list-page'
+import { ServerDetailPage } from '@/pages/monitoring/server-detail-page'
+import { ServerFormPage } from '@/pages/monitoring/server-form-page'
+import { AlertListPage } from '@/pages/monitoring/alert-list-page'
 
 function Protected() {
   const { isLoading, isAuthenticated } = useAuth()
@@ -35,6 +40,12 @@ export default function App() {
           <Route path={`${resource}/:id/delete`} element={<ResourceRecordPage resource={resource} mode="delete" />} />
           {(['hostings','domains'].includes(resource))&&<Route path={`${resource}/:id/access`} element={<ResourceAccessPage resource={resource as 'hostings'|'domains'} />} />}
         </Route>)}
+        <Route path="monitoring" element={<MonitoringDashboardPage />} />
+        <Route path="servers" element={<ServerListPage />} />
+        <Route path="servers/new" element={<ServerFormPage mode="create" />} />
+        <Route path="servers/:id" element={<ServerDetailPage />} />
+        <Route path="servers/:id/edit" element={<ServerFormPage mode="edit" />} />
+        <Route path="server-alerts" element={<AlertListPage />} />
         <Route path="users" element={<ResourcePage resource="users" />} />
         <Route path="users/new" element={<UserFormPage mode="create" />} />
         <Route path="users/:id/edit" element={<UserFormPage mode="edit" />} />

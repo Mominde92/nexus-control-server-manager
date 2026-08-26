@@ -41,6 +41,26 @@ export const queryKeys = {
     recentActivities: (params?: ListParams) =>
       ['dashboard', 'recent-activities', params ?? {}] as const,
   },
+  servers: {
+    ...resourceKeys('servers'),
+    /** Stored agent credentials for one server. */
+    agentCredentials: (id: number | string) =>
+      ['servers', 'agent-credentials', String(id)] as const,
+    /** OS-specific agent install steps. */
+    agentInstructions: (id: number | string) =>
+      ['servers', 'agent-instructions', String(id)] as const,
+    /** One metric type over one range — never all types for all servers. */
+    metrics: (id: number | string, type: string, range: string) =>
+      ['servers', 'metrics', String(id), type, range] as const,
+    latestMetrics: (id: number | string) =>
+      ['servers', 'metrics-latest', String(id)] as const,
+  },
+  serverAlerts: resourceKeys('server-alerts'),
+  monitoring: {
+    all: ['monitoring'] as const,
+    summary: () => ['monitoring', 'summary'] as const,
+    attention: () => ['monitoring', 'attention'] as const,
+  },
   hostings: resourceKeys('hostings'),
   domains: resourceKeys('domains'),
   providers: resourceKeys('providers'),
@@ -53,6 +73,8 @@ export const queryKeys = {
 /** Look up a resource key factory by its API path segment. */
 export function resourceQueryKeys(resource: string) {
   const map: Record<string, ReturnType<typeof resourceKeys>> = {
+    servers: queryKeys.servers,
+    'server-alerts': queryKeys.serverAlerts,
     hostings: queryKeys.hostings,
     domains: queryKeys.domains,
     providers: queryKeys.providers,

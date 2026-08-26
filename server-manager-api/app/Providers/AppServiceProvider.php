@@ -10,7 +10,10 @@ use App\Models\Domain;
 use App\Models\Hosting;
 use App\Models\Project;
 use App\Models\Provider as HostingProvider;
+use App\Models\Server;
+use App\Models\ServerAlert;
 use App\Models\User;
+use App\Observers\FlushesDashboardCache;
 use App\Services\ActivityLogger;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -31,8 +34,20 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureModels();
         $this->configureMorphMap();
+        $this->configureObservers();
         $this->configurePasswordRules();
         $this->configureUrls();
+    }
+
+    /**
+     * Keep the cached dashboard counters honest: any write to a Hosting or
+     * Domain busts the statistics cache, so a newly created record shows up in
+     * the totals immediately instead of after the 60s TTL.
+     */
+    private function configureObservers(): void
+    {
+        Hosting::observe(FlushesDashboardCache::class);
+        Domain::observe(FlushesDashboardCache::class);
     }
 
     /**
@@ -59,6 +74,8 @@ class AppServiceProvider extends ServiceProvider
             'project' => Project::class,
             'hosting' => Hosting::class,
             'domain' => Domain::class,
+            'server' => Server::class,
+            'server_alert' => ServerAlert::class,
         ]);
     }
 

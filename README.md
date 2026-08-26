@@ -134,6 +134,16 @@ php artisan migrate --seed
 php artisan serve --host=127.0.0.1 --port=8000
 ```
 
+Seeding creates the three roles, the full permission set, and an initial
+administrator:
+
+| Email | Password |
+| --- | --- |
+| `admin@servermanager.test` | `password` |
+
+**Change this password immediately after the first sign-in.** It exists only to
+bootstrap local development.
+
 Never commit the generated `.env` or publish production credentials.
 
 ### UI

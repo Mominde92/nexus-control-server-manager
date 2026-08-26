@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\AuthenticateServerAgent;
+use App\Http\Middleware\EnsureUserIsActive;
 use App\Support\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -12,6 +14,9 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Middleware\PermissionMiddleware;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -32,10 +37,14 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Route-level aliases.
         $middleware->alias([
-            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
-            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
-            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
+            'role' => RoleMiddleware::class,
+            'permission' => PermissionMiddleware::class,
+            'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'active' => EnsureUserIsActive::class,
+            // Monitoring agents authenticate with their own bearer credential,
+            // not a Sanctum session/token: this resolves the *server* the token
+            // belongs to rather than a user.
+            'agent' => AuthenticateServerAgent::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

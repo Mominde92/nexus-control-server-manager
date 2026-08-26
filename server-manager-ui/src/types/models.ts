@@ -292,6 +292,216 @@ export interface Credentials {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Servers & monitoring                                                       */
+/* -------------------------------------------------------------------------- */
+
+/** A monitored machine. Every field is server-owned; nothing is hardcoded. */
+export interface Server {
+  id: number
+  name: string
+  hostname: string | null
+  ip_address: string | null
+  os: EnumOption | null
+  os_version: string | null
+  monitoring_enabled: boolean
+  health: EnumOption | null
+  is_stale: boolean
+  last_heartbeat_at: string | null
+  seconds_since_heartbeat: number | null
+  agent_version: string | null
+  uptime_seconds: number | null
+  open_alert_count: number
+  heartbeat_interval_seconds: number | null
+  heartbeat_grace_seconds: number | null
+  cpu_warning_threshold: number | null
+  cpu_critical_threshold: number | null
+  memory_warning_threshold: number | null
+  memory_critical_threshold: number | null
+  disk_warning_threshold: number | null
+  disk_critical_threshold: number | null
+  hosting: RelationRef | null
+  hosting_id?: number | null
+  client: RelationRef | null
+  client_id?: number | null
+  project: RelationRef | null
+  project_id?: number | null
+  notes: string | null
+  /**
+   * Optional recent samples the list endpoint may embed so a table can draw a
+   * sparkline without one request per row. Absent unless the API sends it.
+   */
+  recent_metrics?: Record<string, MetricPoint[]> | null
+  latest_metrics?: LatestMetric[] | null
+  created_at: string | null
+  updated_at?: string | null
+  deleted_at?: string | null
+}
+
+export interface ServerPayload {
+  name: string
+  hostname?: string | null
+  ip_address?: string | null
+  os?: string | null
+  os_version?: string | null
+  hosting_id?: number | null
+  client_id?: number | null
+  project_id?: number | null
+  monitoring_enabled?: boolean
+  heartbeat_interval_seconds?: number | null
+  heartbeat_grace_seconds?: number | null
+  cpu_warning_threshold?: number | null
+  cpu_critical_threshold?: number | null
+  memory_warning_threshold?: number | null
+  memory_critical_threshold?: number | null
+  disk_warning_threshold?: number | null
+  disk_critical_threshold?: number | null
+  notes?: string | null
+}
+
+/** Condensed server reference used by attention/alert payloads. */
+export interface ServerSummary {
+  id: number
+  name: string
+  hostname?: string | null
+  health?: EnumOption | null
+  monitoring_enabled?: boolean
+  is_stale?: boolean
+  last_heartbeat_at?: string | null
+  seconds_since_heartbeat?: number | null
+  open_alert_count?: number
+  os?: EnumOption | null
+}
+
+export interface ServerAlert {
+  id: number
+  server_id?: number
+  server: RelationRef | null
+  severity: EnumOption | null
+  type: string | null
+  title: string | null
+  message: string | null
+  metric_type: EnumOption | null
+  observed_value: number | null
+  threshold_value: number | null
+  started_at: string | null
+  last_observed_at: string | null
+  resolved_at: string | null
+  occurrences: number | null
+  is_open?: boolean
+  is_acknowledged?: boolean
+  acknowledged_at: string | null
+  /** Scalar user id. The loaded relation arrives as `acknowledger`. */
+  acknowledged_by: number | null
+  acknowledger?: RelationRef | null
+}
+
+/**
+ * A stored agent credential. There is deliberately no token field: the
+ * plaintext exists only in the one-time `IssuedAgentToken` create response.
+ */
+export interface AgentCredential {
+  id: number
+  name: string | null
+  token_id: string | null
+  token_hint: string | null
+  last_used_at: string | null
+  expires_at: string | null
+  revoked_at: string | null
+  is_usable: boolean
+  created_at: string | null
+}
+
+/** Response of issuing/rotating a credential — the only place plaintext lives. */
+export interface IssuedAgentToken {
+  token: string
+  credential: AgentCredential
+}
+
+export interface AgentCredentialPayload {
+  name?: string | null
+  expires_at?: string | null
+}
+
+/**
+ * OS-specific install steps for the collector agent.
+ *
+ * Every field is optional: the endpoint's payload keys were still settling while
+ * this was built, so the component reads whichever of each pair is present.
+ */
+export interface AgentInstructions {
+  os?: string | null
+  flavour?: string | null
+  label?: string | null
+  shell?: string | null
+  steps?: string[] | null
+  /** The command to run. `install_command` is the shipped key. */
+  install_command?: string | null
+  script?: string | null
+  command?: string | null
+  interval_seconds?: number | null
+  ingest_url?: string | null
+  metrics_url?: string | null
+  config_url?: string | null
+  config_path?: string | null
+  endpoint?: string | null
+  notes?: string | null
+}
+
+/** One aggregated bucket of a metric series. */
+export interface MetricPoint {
+  t: string
+  avg: number | null
+  min: number | null
+  max: number | null
+}
+
+/**
+ * One metric series, normalised by the service layer.
+ *
+ * The API nests the descriptor under `metric` and carries the thresholds with
+ * the series; both are flattened here so the chart has one shape to render.
+ */
+export interface MetricSeries {
+  type: string
+  label: string | null
+  unit: string | null
+  is_percentage: boolean
+  source: string | null
+  bucket: string | null
+  truncated: boolean
+  thresholds: { warning: number | null; critical: number | null }
+  points: MetricPoint[]
+}
+
+export interface LatestMetric {
+  type: { value: string; label: string }
+  value: number | null
+  unit: string | null
+  recorded_at: string | null
+}
+
+/**
+ * Fleet counters, normalised from the API's nested
+ * `{servers, alerts, needs_attention}` payload into one flat set of tiles.
+ */
+export interface MonitoringSummary {
+  total: number
+  monitored: number
+  healthy: number
+  warning: number
+  critical: number
+  offline: number
+  pending: number
+  disabled: number
+  /** Open alert totals by severity, straight from the API. */
+  open_alerts: number
+  needs_attention: number
+}
+
+/** Metric chart ranges offered by the API. */
+export type MetricRange = '1h' | '6h' | '24h' | '7d' | '30d' | '90d'
+
+/* -------------------------------------------------------------------------- */
 /* Activity log                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -351,4 +561,8 @@ export interface MetaOptions {
   permissions: EnumOption[]
   currencies: EnumOption[]
   expiry_window_days: EnumOption[]
+  server_os: EnumOption[]
+  server_health: EnumOption[]
+  metric_types: EnumOption[]
+  alert_severities: EnumOption[]
 }

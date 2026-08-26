@@ -60,19 +60,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          if [ "$(id -u)" -eq 0 ]; then
-            SUDO=""
-            RUN_AS_WWW_DATA="runuser -u www-data --"
-          else
-            SUDO="sudo"
-            RUN_AS_WWW_DATA="sudo -u www-data"
-          fi
+          umask 0002
 
           API_PATH="$DEPLOY_PATH/api"
           UI_PATH="$DEPLOY_PATH/ui-dist"
 
-          $SUDO mkdir -p "$API_PATH" "$UI_PATH"
+          mkdir -p "$API_PATH" "$UI_PATH"
 
           if [ ! -f "$API_PATH/.env" ]; then
             echo "Missing production environment file: $API_PATH/.env"
@@ -80,28 +73,22 @@ jobs:
             exit 1
           fi
 
-          $SUDO rsync -a --delete \
+          rsync -a --delete \
             --exclude='.env' \
             --exclude='storage' \
             server-manager-api/ "$API_PATH/"
-          $SUDO rsync -a --delete server-manager-ui/dist/ "$UI_PATH/"
+          rsync -a --delete server-manager-ui/dist/ "$UI_PATH/"
 
-          $SUDO chown root:www-data "$API_PATH/.env"
-          $SUDO chmod 640 "$API_PATH/.env"
-          $SUDO chown -R www-data:www-data "$API_PATH/storage" "$API_PATH/bootstrap/cache"
-          $SUDO chmod -R ug+rwX "$API_PATH/storage" "$API_PATH/bootstrap/cache"
+          chmod 640 "$API_PATH/.env"
+          chmod -R ug+rwX "$API_PATH/storage" "$API_PATH/bootstrap/cache"
 
           cd "$API_PATH"
-          $RUN_AS_WWW_DATA "$PHP_BIN" artisan migrate --force --no-interaction
-          $RUN_AS_WWW_DATA "$PHP_BIN" artisan optimize:clear
-          $RUN_AS_WWW_DATA "$PHP_BIN" artisan config:cache
-          $RUN_AS_WWW_DATA "$PHP_BIN" artisan route:cache
-          $RUN_AS_WWW_DATA "$PHP_BIN" artisan event:cache
-          $RUN_AS_WWW_DATA "$PHP_BIN" artisan storage:link --force
+          "$PHP_BIN" artisan migrate --force --no-interaction
+          "$PHP_BIN" artisan optimize:clear
+          "$PHP_BIN" artisan config:cache
+          "$PHP_BIN" artisan route:cache
+          "$PHP_BIN" artisan event:cache
+          "$PHP_BIN" artisan storage:link --force
+          "$PHP_BIN" artisan queue:restart
 
-          if systemctl list-unit-files nexus-control-queue.service >/dev/null 2>&1; then
-            $SUDO systemctl restart nexus-control-queue.service
-          fi
-
-          $SUDO systemctl reload nginx
           echo "Deployed release: $GITHUB_SHA"

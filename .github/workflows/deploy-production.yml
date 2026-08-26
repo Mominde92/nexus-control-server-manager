@@ -27,6 +27,13 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server-manager-ui/package-lock.json
+
       - name: Verify server tools
         shell: bash
         run: |

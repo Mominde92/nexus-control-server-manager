@@ -1,5 +1,11 @@
 # Nexus Control — Enterprise Server Manager
 
+![PHP](https://img.shields.io/badge/PHP-8.3-777BB4?logo=php&logoColor=white)
+![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+
 A production-oriented platform for managing hosting accounts, internal servers, domains, providers, clients, projects, credentials, expiry dates, users, and access policies from one secure workspace.
 
 Nexus Control is implemented as two fully separated applications: a Laravel REST API and a React single-page application.
